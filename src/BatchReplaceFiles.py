@@ -1648,12 +1648,14 @@ class FileReplacerApp(QMainWindow):
                 item = QTreeWidgetItem([os.path.basename(path)])
                 item.setData(0, Qt.UserRole, path)
                 
-                # 设置图标和子项指示器
+                # 设置图标和子项指示器（使用系统真实图标，与非搜索状态一致）
+                file_info = QFileInfo(path)
+                icon_provider = QFileIconProvider()
+                icon = icon_provider.icon(file_info)
+                item.setIcon(0, icon)
                 if os.path.isdir(path):
-                    item.setIcon(0, self.style().standardIcon(QStyle.SP_DirIcon))
                     item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)  # 显示展开指示器
                 else:
-                    item.setIcon(0, self.style().standardIcon(QStyle.SP_FileIcon))
                     item.setChildIndicatorPolicy(QTreeWidgetItem.DontShowIndicator)  # 不显示展开指示器
                 
                 self.target_tree.addTopLevelItem(item)

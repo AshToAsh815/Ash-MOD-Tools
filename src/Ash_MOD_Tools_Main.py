@@ -27,7 +27,7 @@ class MainApplication(QMainWindow):
         super().__init__()
         
         # Set window properties
-        self.setWindowTitle("Ash-MOD-Tools-v1.0")
+        self.setWindowTitle("Ash-MOD-Tools-v1.1")
         self.setGeometry(100, 100, 1000, 800) # 调整默认高度
         self.center_window() # 居中窗口
         

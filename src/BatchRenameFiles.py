@@ -127,8 +127,14 @@ class HighlightDelegate(QStyledItemDelegate):
         model.setData(index, editor.text(), Qt.EditRole)
 
     def paint(self, painter, option, index):
-        if not self.highlight_enabled:
-            # 高亮禁用时调用父类方法
+        # 检查是否有查找高亮信息 - 左侧代理的查找高亮完全独立
+        highlight_info = index.data(Qt.UserRole + 1)
+        has_find_highlight = highlight_info and any(role == "find" for _, role in highlight_info)
+        
+        # 左侧代理：如果有查找高亮，则始终显示，不受highlight_enabled影响
+        # 其他情况仍受highlight_enabled控制
+        if not self.highlight_enabled and not (not self.is_right_side and has_find_highlight):
+            # 高亮禁用时调用父类方法（但左侧代理的查找高亮除外）
             super().paint(painter, option, index)
             return
 
@@ -1309,6 +1315,12 @@ class BatchRenameWidget(QWidget):
         self.replace_color_btn.clicked.connect(lambda: self._choose_color_direct("replace"))
         add_color_row("替换为：", [self.replace_edit], self.replace_color_btn, single_target_layout)
         
+        # 连接textChanged信号到预览方法，确保即使不开启高光也能实时更新
+        self.find_edit.textChanged.connect(self.on_preview)
+        self.find_edit.textChanged.connect(self._update_find_highlight)  # 查找内容变化时更新查找高亮
+        self.replace_edit.textChanged.connect(self.on_preview)
+        self.replace_edit.textChanged.connect(self._update_find_highlight)  # 替换内容变化时也更新查找高亮
+        
         find_layout.addWidget(self.single_target_widget)
         
         # 多目标查找替换控件（默认隐藏）
@@ -1330,6 +1342,18 @@ class BatchRenameWidget(QWidget):
 
         # 前后缀 - 移到顶部容器，紧挨着查找替换组
         prefix_suffix_group, ps_layout = create_group("前后缀")
+        # 前后缀启用复选框
+        self.enable_prefix_suffix_cb = QCheckBox()
+        self.enable_prefix_suffix_cb.setChecked(False)
+        enable_row_ps = QHBoxLayout()
+        enable_row_ps.setSpacing(0)
+        enable_row_ps.setAlignment(Qt.AlignLeft)
+        enable_row_ps.addWidget(self.enable_prefix_suffix_cb)
+        label_ps = QLabel("启用")
+        label_ps.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        enable_row_ps.addWidget(label_ps)
+        enable_row_ps.addStretch()
+        ps_layout.addLayout(enable_row_ps)
         self.prefix_edit = QLineEdit()
         self.prefix_edit.setPlaceholderText("输入前缀内容")
         # 添加前缀颜色按钮（菱形样式）
@@ -1564,6 +1588,7 @@ class BatchRenameWidget(QWidget):
             self.case_combo, self.number_prefix_edit, self.insert_after_combo,
             self.insert_after_edit, self.number_suffix_edit, self.start_spin, self.step_spin,
             self.pad_spin, self.remove_from, self.remove_to, self.match_mode, self.enable_number_cb,
+            self.enable_prefix_suffix_cb,
             self.filter_pattern_edit, self.skip_pattern_edit, self.enable_delete_cb  # 添加启用删除复选框
         ]
         for w in all_widgets:
@@ -1694,7 +1719,8 @@ class BatchRenameWidget(QWidget):
                 continue
                 
             parts, _ = self.build_new_name(original_name, row)
-            new_name = ''.join([text for text, _ in parts])
+            # 应用时排除被标记为删除的片段
+            new_name = ''.join([text for text, role in parts if role != "delete"])
             dst = src.with_name(new_name)
             
             if src == dst:
@@ -1715,7 +1741,8 @@ class BatchRenameWidget(QWidget):
         src_path, original_name, processed_info = self.file_data[target_row]
         src = Path(src_path)
         parts, _ = self.build_new_name(original_name, target_row)
-        new_name = ''.join([text for text, _ in parts])
+        # 应用时排除被标记为删除的片段
+        new_name = ''.join([text for text, role in parts if role != "delete"])
         dst = src.with_name(new_name)
         
         try:
@@ -1741,6 +1768,10 @@ class BatchRenameWidget(QWidget):
             pass
 
         self.on_preview()  # 重新预览以更新显示
+        # 确保查找高亮独立应用，不受逐一应用影响
+        self._update_find_highlight()
+        # 触发高光设置更新，确保左侧和右侧高光正确显示
+        self._update_highlight_settings()
 
     def load_color_config(self):
         """加载颜色配置"""
@@ -1868,6 +1899,9 @@ class BatchRenameWidget(QWidget):
         """更新高亮设置"""
         self.right_delegate.set_highlight_enabled(self.highlight_enabled.isChecked())
         self.right_delegate.set_highlight_intensity(self.highlight_intensity.value() / 100.0)
+        # 左侧代理：查找高亮完全独立，不受高光开关影响
+        # 但其他类型的高亮（如替换高亮）仍受高光开关控制
+        # 因此左侧代理的highlight_enabled状态仍然跟随高光开关，但在paint方法中特殊处理查找高亮
         self.left_delegate.set_highlight_enabled(self.highlight_enabled.isChecked())
         self.left_delegate.set_highlight_intensity(self.highlight_intensity.value() / 100.0)
         self.on_preview()
@@ -2298,7 +2332,7 @@ class BatchRenameWidget(QWidget):
         self.left_tree.viewport().update()
 
     def _update_find_highlight(self):
-        """更新查找高亮 - 只高亮查找关键词"""
+        """更新查找高亮 - 只高亮查找关键词 - 作为独立逻辑运行"""
         try:
             find_text = self.find_edit.text()
             is_regex = (self.match_mode.currentIndex() == 1)
@@ -2321,7 +2355,8 @@ class BatchRenameWidget(QWidget):
                     if highlight_info:
                         highlight_info = [(part, role) for part, role in highlight_info if role != "find"]
                     
-                    if find_text and self.highlight_enabled.isChecked() and text:
+                    # 查找高亮作为独立逻辑，不受高光开关影响，只根据输入框内容显示
+                    if find_text and text:
                         # 两侧树都使用自定义高亮代理
                         if model == self.right_model or model == self.left_model:
                             # 查找匹配的文本并添加高亮
@@ -2377,27 +2412,7 @@ class BatchRenameWidget(QWidget):
                             item = model.itemFromIndex(index)
                             if item:
                                 item.setData(new_highlight_info, Qt.UserRole + 1)
-                        else:
-                            # 左侧树保持原有逻辑
-                            if is_regex:
-                                try:
-                                    if re.search(find_text, text):
-                                        try:
-                                            item = model.itemFromIndex(index)
-                                            if item:
-                                                item.setBackground(QBrush(self.colors["find"]))
-                                        except Exception:
-                                            pass
-                                except re.error:
-                                    pass
-                            else:
-                                if find_text in text:
-                                    try:
-                                        item = model.itemFromIndex(index)
-                                        if item:
-                                            item.setBackground(QBrush(self.colors["find"]))
-                                    except Exception:
-                                            pass
+                        # 统一通过代理的高亮信息渲染，无需直接设置背景
                     else:
                         # 没有查找文本，恢复原始高亮
                         if model == self.right_model or model == self.left_model:
@@ -2448,23 +2463,28 @@ class BatchRenameWidget(QWidget):
         find_text = self.find_edit.text()
         replace_text = self.replace_edit.text()
         
-        if find_text and self.highlight_enabled.isChecked():
-            # 先构建查找高亮信息（不替换，只高亮）
-            if self.match_mode.currentText() == "普通匹配":
-                if find_text in original_name:
-                    parts = []
-                    start = 0
-                    while True:
-                        pos = original_name.find(find_text, start)
-                        if pos == -1:
-                            if start < len(original_name):
-                                parts.append((original_name[start:], None))
-                            break
-                        if pos > start:
-                            parts.append((original_name[start:pos], None))
-                        parts.append((find_text, "find"))  # 高亮查找内容
-                        start = pos + len(find_text)
-                    new_name_parts = parts
+        if find_text:
+            # 查找替换功能无论是否开启高光都执行
+            # 但高亮显示部分仍然依赖highlight_enabled状态
+            
+            # 处理高亮显示（只有在启用高光时）
+            if self.highlight_enabled.isChecked():
+                # 先构建查找高亮信息（不替换，只高亮）
+                if self.match_mode.currentText() == "普通匹配":
+                    if find_text in original_name:
+                        parts = []
+                        start = 0
+                        while True:
+                            pos = original_name.find(find_text, start)
+                            if pos == -1:
+                                if start < len(original_name):
+                                    parts.append((original_name[start:], None))
+                                break
+                            if pos > start:
+                                parts.append((original_name[start:pos], None))
+                            parts.append((find_text, "find"))  # 高亮查找内容
+                            start = pos + len(find_text)
+                        new_name_parts = parts
                 else:
                     try:
                         # 正则查找高亮
@@ -2489,7 +2509,7 @@ class BatchRenameWidget(QWidget):
                 if self.match_mode.currentText() == "普通匹配":
                     if find_text and find_text in original_name:
                         # 如果启用了高亮，需要重新构建高亮信息以包含替换部分
-                        if self.highlight_enabled.isChecked() and find_text and replace_text:
+                        if self.highlight_enabled.isChecked():
                             parts = []
                             start = 0
                             while True:
@@ -2512,21 +2532,23 @@ class BatchRenameWidget(QWidget):
                     try:
                         # 正则替换暂不支持部分高亮
                         new_name = re.sub(find_text, replace_text, original_name)
-                        new_name_parts = [(new_name, "replace")]
+                        new_name_parts = [(new_name, "replace") if self.highlight_enabled.isChecked() else (new_name, None)]
                         processed_info["find"] = True
                         original_name = new_name
                     except re.error as e:
                         QMessageBox.warning(self, "正则表达式错误", f"正则表达式无效: {str(e)}")
                         return new_name_parts, processed_info
 
-        # 前后缀（仅对匹配查找条件的文件生效）
+        # 前后缀（仅对匹配查找条件的文件生效，且启用时）
         prefix = self.prefix_edit.text()
-        if prefix and is_matching:
+        suffix = self.suffix_edit.text()
+        prefix_suffix_enabled = getattr(self, "enable_prefix_suffix_cb", None)
+        prefix_suffix_enabled = (prefix_suffix_enabled.isChecked() if prefix_suffix_enabled else False)
+        if prefix and is_matching and prefix_suffix_enabled:
             new_name_parts.insert(0, (prefix, "prefix"))
             processed_info["prefix"] = True
 
-        suffix = self.suffix_edit.text()
-        if suffix and is_matching:
+        if suffix and is_matching and prefix_suffix_enabled:
             new_name_parts.append((suffix, "suffix"))
             processed_info["suffix"] = True
 
@@ -2822,10 +2844,15 @@ class BatchRenameWidget(QWidget):
             print(f"预览严重错误: {e}")
 
             self._sync_scroll_positions()
-            # 先清空所有查找高亮信息
+            # 先清空所有查找高亮信息（包括左侧和右侧）
             for row in range(self.right_model.rowCount()):
                 index = self.right_model.index(row, 1)
                 item = self.right_model.itemFromIndex(index)
+                if item:
+                    item.setData([], Qt.UserRole + 1)
+            for row in range(self.left_model.rowCount()):
+                index = self.left_model.index(row, 2)  # 左侧文件名列是第2列
+                item = self.left_model.itemFromIndex(index)
                 if item:
                     item.setData([], Qt.UserRole + 1)
             # 重新应用预览高亮
@@ -2919,6 +2946,12 @@ class BatchRenameWidget(QWidget):
         # 更新预览
         self.on_preview()
         
+        # 确保查找高亮独立应用，不受文件过滤影响
+        self._update_find_highlight()
+        
+        # 触发高光设置更新，确保右侧高光正确显示
+        self._update_highlight_settings()
+        
         # 不再显示筛选结果弹窗
 
     def on_reset_filter(self):
@@ -2935,6 +2968,12 @@ class BatchRenameWidget(QWidget):
         
         # 更新预览
         self.on_preview()
+        
+        # 确保查找高亮独立应用，不受重置影响
+        self._update_find_highlight()
+        
+        # 触发高光设置更新，确保右侧高光正确显示
+        self._update_highlight_settings()
         
         # 清空筛选条件
         self.filter_pattern_edit.clear()
@@ -3041,7 +3080,8 @@ class BatchRenameWidget(QWidget):
                 continue
                 
             parts, _ = self.build_new_name(original_name, idx)
-            new_name = ''.join([text for text, _ in parts])
+            # 应用时排除被标记为删除的片段
+            new_name = ''.join([text for text, role in parts if role != "delete"])
             dst = src.with_name(new_name)
             
             if src == dst:
@@ -3138,6 +3178,11 @@ class BatchRenameWidget(QWidget):
             self._rebuild_left_tree()
 
         self.on_preview()
+        # 查找高亮现在是独立逻辑，不受高光状态影响，直接更新查找高亮
+        self._update_find_highlight()
+        # 触发高光设置更新，确保右侧高光正确显示
+        self._update_highlight_settings()
+        self.right_tree.viewport().update() # 强制刷新右侧树视图
 
     def copy_selected_path(self):
         """复制选中项的路径"""
@@ -3303,6 +3348,9 @@ class BatchRenameWidget(QWidget):
             self._remove_unselected_items(tree_view)
         elif action == clear_window_action:
             self._clear_window()
+        
+        # 撤销操作后刷新高亮显示
+        self._update_find_highlight()
     
     def _copy_item_path(self, index, full_path=True):
         """复制项目路径或文件名"""
