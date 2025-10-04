@@ -27,7 +27,7 @@ Ash-MOD-Tools/
 ├── icon.ico               # 应用程序图标（根目录）
 └── Ash_MOD_Tools_Main.exe # 编译后的可执行文件（如存在）
 ```
-<img width="1332" height="1030" alt="批量改名界面" src="https://github.com/user-attachments/assets/8f30f316-0300-42ca-a3f7-fec779ffe1c3" />
+<img width="1262" height="1030" alt="批量改名界面" src="https://github.com/user-attachments/assets/e82a526b-80a7-4a2b-8d28-31c0d68a3f63" />
 <img width="1002" height="1030" alt="批量替换界面" src="https://github.com/user-attachments/assets/59ecbd81-1661-44b5-8ab3-5ddb1d7d75d9" />
 
 ## 运行方式
