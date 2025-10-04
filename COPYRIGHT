@@ -1,0 +1,16 @@
+Ash-MOD-Tools - 批量文件处理工具集
+Copyright (C) 2025 AshToAsh815
+
+本程序是自由软件：你可以根据自由软件基金会发布的GNU通用公共许可证（GPL v3.0）的条款重新分发和/或修改它。
+
+本程序分发的目的是希望它有用，但不提供任何担保；甚至没有对适销性或特定用途适用性的暗示担保。有关更多详细信息，请参阅GNU通用公共许可证。
+
+你应该已经收到了GNU通用公共许可证的副本（见LICENSE文件）。如果没有，请访问 <https://www.gnu.org/licenses/>。
+
+第三方组件和许可证：
+- PyQt5: GNU General Public License v3.0
+- Python: Python Software Foundation License
+
+联系信息：
+作者：AshToAsh815
+项目地址：https://github.com/[你的用户名]/Ash-MOD-Tools

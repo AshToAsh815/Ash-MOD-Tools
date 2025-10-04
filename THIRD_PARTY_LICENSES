@@ -1,0 +1,30 @@
+第三方组件许可证信息
+
+本软件使用以下第三方组件，各自遵循其相应的许可证：
+
+1. PyQt5
+   许可证：GNU General Public License v3.0
+   版权所有：Riverbank Computing Limited
+   许可证全文：见本文件附录A
+   源代码获取：https://www.riverbankcomputing.com/software/pyqt/download
+
+2. Python
+   许可证：Python Software Foundation License
+   版权所有：Python Software Foundation
+   许可证全文：见本文件附录B
+   源代码获取：https://www.python.org/downloads/source/
+
+附录A - PyQt5许可证（摘要）
+=============================
+PyQt5在GNU通用公共许可证v3.0下发布。根据该许可证：
+- 如果您分发基于PyQt5的应用程序，必须同时提供源代码
+- 必须向接收者提供GPL v3.0许可证副本
+- 任何衍生作品也必须使用GPL v3.0许可证
+
+附录B - Python许可证（摘要）
+=============================
+Python遵循Python软件基金会许可证，允许商业和非商业使用。
+
+免责声明
+========
+本软件按"原样"提供，不保证任何明示或暗示的担保，包括但不限于适销性和特定用途适用性的担保。
