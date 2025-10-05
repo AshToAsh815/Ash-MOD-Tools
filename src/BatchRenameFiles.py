@@ -1973,10 +1973,10 @@ class BatchRenameWidget(QWidget):
         # 备份原始文件数据
         self.original_file_data = self.file_data.copy()
         
-        # 显示添加结果
-        if duplicate_count > 0:
-            QMessageBox.information(self, "添加完成", 
-                f"成功添加 {added_count} 个文件，跳过 {duplicate_count} 个重复文件")
+        # 显示添加结果（注释掉弹窗提示）
+        # if duplicate_count > 0:
+        #     QMessageBox.information(self, "添加完成", 
+        #         f"成功添加 {added_count} 个文件，跳过 {duplicate_count} 个重复文件")
 
     def add_folder_names(self, folder_paths, recursive=False):
         """添加文件夹名称（用于重命名文件夹）"""
@@ -1987,20 +1987,52 @@ class BatchRenameWidget(QWidget):
         
         added_count = 0
         duplicate_count = 0
+        permission_error_count = 0
         
         for folder_path in folder_paths:
             folder_str = str(folder_path)
             try:
+                # 检查文件夹是否存在和可访问
+                if not os.path.exists(folder_str):
+                    print(f"文件夹不存在: {folder_str}")
+                    continue
+                    
+                if not os.access(folder_str, os.R_OK):
+                    print(f"无读取权限: {folder_str}")
+                    permission_error_count += 1
+                    continue
+                
                 if recursive:
-                    # 递归模式：添加文件夹及其所有子文件夹
+                    # 递归模式：添加文件夹及其所有子文件夹，按深度降序排序
+                    all_dirs = []
                     for root, dirs, _ in os.walk(folder_str):
+                        # 过滤掉无权限的目录
+                        dirs[:] = [d for d in dirs if os.access(os.path.join(root, d), os.R_OK)]
+                        
                         for dir_name in dirs:
                             dir_path = os.path.join(root, dir_name)
-                            if self._add_folder_to_trees(dir_path):
-                                self.folder_paths.add(dir_path)
-                                added_count += 1
-                            else:
-                                duplicate_count += 1
+                            try:
+                                # 检查目录是否为符号链接
+                                if os.path.islink(dir_path):
+                                    continue  # 跳过符号链接
+                                
+                                # 计算路径深度（分隔符数量）
+                                depth = dir_path.count(os.sep)
+                                all_dirs.append((depth, dir_path))
+                            except (PermissionError, OSError) as e:
+                                print(f"跳过无权限目录 {dir_path}: {e}")
+                                permission_error_count += 1
+                    
+                    # 按深度降序排序（最深层的在上方）
+                    all_dirs.sort(key=lambda x: x[0], reverse=True)
+                    
+                    # 按排序后的顺序添加文件夹
+                    for depth, dir_path in all_dirs:
+                        if self._add_folder_to_trees(dir_path):
+                            self.folder_paths.add(dir_path)
+                            added_count += 1
+                        else:
+                            duplicate_count += 1
                 else:
                     # 非递归模式：只添加当前文件夹
                     if self._add_folder_to_trees(folder_str):
@@ -2008,6 +2040,9 @@ class BatchRenameWidget(QWidget):
                         added_count += 1
                     else:
                         duplicate_count += 1
+            except (PermissionError, OSError) as e:
+                print(f"添加文件夹失败（权限错误） {folder_str}: {e}")
+                permission_error_count += 1
             except Exception as e:
                 print(f"添加文件夹失败 {folder_str}: {e}")
         
@@ -2019,10 +2054,17 @@ class BatchRenameWidget(QWidget):
         # 备份原始文件数据
         self.original_file_data = self.file_data.copy()
         
-        # 显示添加结果
-        if duplicate_count > 0:
-            QMessageBox.information(self, "添加完成", 
-                f"成功添加 {added_count} 个文件夹，跳过 {duplicate_count} 个重复文件夹")
+        # 显示添加结果（注释掉弹窗提示）
+        # message_parts = []
+        # if added_count > 0:
+        #     message_parts.append(f"成功添加 {added_count} 个文件夹")
+        # if duplicate_count > 0:
+        #     message_parts.append(f"跳过 {duplicate_count} 个重复文件夹")
+        # if permission_error_count > 0:
+        #     message_parts.append(f"跳过 {permission_error_count} 个无权限文件夹")
+        # 
+        # if message_parts:
+        #     QMessageBox.information(self, "添加完成", "，".join(message_parts))
 
     def _add_folder_to_trees(self, folder_path: str) -> bool:
         """添加文件夹到树形视图，返回是否成功添加"""
@@ -2040,21 +2082,10 @@ class BatchRenameWidget(QWidget):
             return False
 
     def _get_duplicate_folder_names(self) -> set:
-        """获取同名文件夹名称集合"""
-        folder_names = {}
-        duplicate_names = set()
-        
-        # 统计所有文件夹的名称出现次数
-        for src_path, original_name, _ in self.file_data:
-            if os.path.isdir(src_path):
-                if original_name in folder_names:
-                    duplicate_names.add(original_name)
-                    folder_names[original_name] += 1
-                else:
-                    folder_names[original_name] = 1
-        
-        print(f"调试 - 文件夹统计: {folder_names}, 同名文件夹: {duplicate_names}")
-        return duplicate_names
+        """获取同名文件夹名称集合（已废弃 - 同一路径下不可能有同名文件夹）"""
+        # 这个逻辑是多余的，因为文件系统不允许同一路径下有同名文件夹
+        # 保留空方法以保持兼容性，但直接返回空集合
+        return set()
 
     def _get_relative_folder_path(self, folder_path: str) -> str:
         """获取文件夹的相对路径（从共同父级开始）"""
@@ -2062,22 +2093,40 @@ class BatchRenameWidget(QWidget):
             # 找到所有文件夹路径的共同父级
             folder_paths = [item[0] for item in self.file_data if os.path.isdir(item[0])]
             if not folder_paths:
-                return folder_path
-            
-            # 使用os.path.commonpath找到共同路径
-            common_parent = os.path.commonpath(folder_paths)
-            
-            # 如果共同父级就是当前文件夹的父级，返回文件夹名
-            if common_parent == os.path.dirname(folder_path):
                 return os.path.basename(folder_path)
             
-            # 否则返回从共同父级开始的相对路径
-            relative_path = os.path.relpath(folder_path, common_parent)
-            return relative_path
+            # 使用pathlib.Path获得更好的跨平台兼容性
+            folder_path_obj = Path(folder_path)
+            
+            # 检查所有路径是否在同一驱动器上
+            try:
+                # 使用os.path.commonpath找到共同路径
+                common_parent = os.path.commonpath(folder_paths)
+                
+                # 检查是否在同一驱动器上
+                if len(folder_paths) > 1:
+                    first_drive = Path(folder_paths[0]).drive
+                    for path in folder_paths[1:]:
+                        if Path(path).drive != first_drive:
+                            # 不同驱动器，直接返回文件夹名
+                            return os.path.basename(folder_path)
+                
+                # 如果共同父级就是当前文件夹的父级，返回文件夹名
+                if common_parent == str(folder_path_obj.parent):
+                    return folder_path_obj.name
+                
+                # 否则返回从共同父级开始的相对路径
+                relative_path = os.path.relpath(folder_path, common_parent)
+                return relative_path
+                
+            except (ValueError, OSError):
+                # 如果路径跨不同驱动器或无法计算共同路径，返回文件夹名
+                return folder_path_obj.name
             
         except Exception as e:
             print(f"计算相对路径失败 {folder_path}: {e}")
-            return folder_path
+            # 出错时返回文件夹名而不是完整路径
+            return os.path.basename(folder_path)
 
     def _add_file_to_trees(self, file_path: str) -> bool:
         """添加文件到树形视图，返回是否成功添加"""
@@ -2132,9 +2181,6 @@ class BatchRenameWidget(QWidget):
         try:
             self.left_model.removeRows(0, self.left_model.rowCount())
             
-            # 获取同名文件夹名称
-            duplicate_folder_names = self._get_duplicate_folder_names()
-            
             # 批量添加项目以提高性能
             items_to_add = []
             
@@ -2158,13 +2204,6 @@ class BatchRenameWidget(QWidget):
                     
                     item3 = QStandardItem(display_path)
                     item3.setData(src_path, Qt.UserRole)
-                    
-                    # 如果是文件夹且名称重复，设置路径列为红色
-                    if os.path.isdir(src_path) and original_name in duplicate_folder_names:
-                        item3.setForeground(QColor("red"))
-                        print(f"调试 - 设置红色字体: {original_name} - {src_path}")
-                    else:
-                        print(f"调试 - 正常字体: {original_name} - {src_path} (重复文件夹: {duplicate_folder_names})")
                     
                     item4 = QStandardItem(str(idx + 1))
                     item4.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -3065,6 +3104,77 @@ class BatchRenameWidget(QWidget):
         if self.sync_column_enabled:
             self.left_tree.setColumnWidth(logicalIndex, newSize)
 
+    def _validate_rename_operation(self, src: Path, dst: Path, new_name: str) -> bool:
+        """验证重命名操作的安全性
+        
+        Args:
+            src: 源文件/文件夹路径
+            dst: 目标文件/文件夹路径
+            new_name: 新名称
+            
+        Returns:
+            bool: 是否通过安全检查
+        """
+        try:
+            # 1. 检查源路径是否存在且可访问
+            if not src.exists():
+                return False
+                
+            # 2. 检查新名称是否为空
+            if not new_name.strip():
+                return False
+                
+            # 3. 检查新名称长度限制（Windows最大路径260字符，但实际限制更复杂）
+            if len(new_name) > 255:
+                return False
+                
+            # 4. 检查非法字符（Windows文件系统限制）
+            illegal_chars = ['<', '>', ':', '"', '|', '?', '*']
+            if any(char in new_name for char in illegal_chars):
+                return False
+                
+            # 5. 检查保留名称（Windows保留名称）
+            reserved_names = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 
+                            'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 
+                            'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9']
+            name_without_ext = Path(new_name).stem.upper()
+            if name_without_ext in reserved_names:
+                return False
+                
+            # 6. 检查路径分隔符
+            if '/' in new_name or '\\' in new_name:
+                return False
+                
+            # 7. 检查Unicode字符兼容性
+            try:
+                new_name.encode('utf-8')
+            except UnicodeEncodeError:
+                return False
+                
+            # 8. 检查目标路径是否在系统关键目录
+            system_dirs = ['C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)',
+                         'C:\\System32', 'C:\\Users', 'C:\\ProgramData']
+            dst_str = str(dst).lower()
+            if any(system_dir.lower() in dst_str for system_dir in system_dirs):
+                return False
+                
+            # 9. 检查是否尝试重命名到根目录
+            if dst.parent == dst:
+                return False
+                
+            # 10. 检查源和目标是否在同一文件系统（避免跨设备移动）
+            if src.parent != dst.parent:
+                # 对于文件夹重命名，确保目标路径有效
+                try:
+                    dst.parent.resolve()
+                except (OSError, ValueError):
+                    return False
+                    
+            return True
+            
+        except (OSError, ValueError, AttributeError):
+            return False
+
     def on_apply_all(self):
         """执行全部重命名操作，包含完整的冲突检测（无弹窗版）"""
         if not self.file_data:
@@ -3074,7 +3184,20 @@ class BatchRenameWidget(QWidget):
         rename_ops = []
         new_names: Set[str] = set()  # 用于检测内部冲突
         
-        for idx, (src_path, original_name, processed_info) in enumerate(self.file_data):
+        # 如果是文件夹模式，按路径深度降序排序（深层优先）
+        file_data_to_process = self.file_data
+        if hasattr(self, 'folder_mode') and self.folder_mode:
+            # 创建带深度的列表
+            file_data_with_depth = []
+            for idx, (src_path, original_name, processed_info) in enumerate(self.file_data):
+                depth = src_path.count(os.sep)
+                file_data_with_depth.append((depth, idx, src_path, original_name, processed_info))
+            
+            # 按深度降序排序（深度大的优先）
+            file_data_with_depth.sort(key=lambda x: x[0], reverse=True)
+            file_data_to_process = [(src_path, original_name, processed_info) for _, _, src_path, original_name, processed_info in file_data_with_depth]
+        
+        for idx, (src_path, original_name, processed_info) in enumerate(file_data_to_process):
             src = Path(src_path)
             if not src.exists():
                 continue
@@ -3096,6 +3219,10 @@ class BatchRenameWidget(QWidget):
             if dst.exists():
                 # 有外部冲突时跳过这些文件
                 continue
+            
+            # 增强安全检查
+            if not self._validate_rename_operation(src, dst, new_name):
+                continue
                     
             # 只有在确认要重命名时才添加到集合中
             new_names.add(new_name)
@@ -3110,11 +3237,33 @@ class BatchRenameWidget(QWidget):
         
         for src, dst in rename_ops:
             try:
+                # 再次验证操作
+                if not self._validate_rename_operation(src, dst, dst.name):
+                    failed.append(f"{src.name}: 安全检查失败")
+                    continue
+                    
                 src.rename(dst)
                 performed.append((src, dst))
+            except PermissionError as e:
+                failed.append(f"{src.name}: 权限不足 - {str(e)}")
+                print(f"重命名权限错误: {e}")
+            except FileExistsError as e:
+                failed.append(f"{src.name}: 目标文件已存在 - {str(e)}")
+                print(f"重命名文件存在错误: {e}")
+            except OSError as e:
+                # 细化操作系统错误
+                if "文件名、目录名或卷标语法不正确" in str(e):
+                    failed.append(f"{src.name}: 非法文件名 - {str(e)}")
+                elif "系统找不到指定的路径" in str(e):
+                    failed.append(f"{src.name}: 路径不存在 - {str(e)}")
+                elif "另一个程序正在使用此文件" in str(e):
+                    failed.append(f"{src.name}: 文件被占用 - {str(e)}")
+                else:
+                    failed.append(f"{src.name}: 系统错误 - {str(e)}")
+                print(f"重命名系统错误: {e}")
             except Exception as e:
-                failed.append(f"{src.name}: {str(e)}")
-                print(f"重命名错误: {e}")
+                failed.append(f"{src.name}: 未知错误 - {str(e)}")
+                print(f"重命名未知错误: {e}")
 
         # 处理结果
         if performed:
@@ -3166,13 +3315,16 @@ class BatchRenameWidget(QWidget):
         # 更新文件数据和界面
         if performed:
             # 更新 file_data 中对应路径（把 dst -> src）
+            # 使用列表收集所有需要更新的路径，避免break导致只更新第一个匹配项
+            updated_indices = set()
             for dst_path, src_path in performed:
                 dst_str = str(dst_path)
                 src_str = str(src_path)
                 for i, (path_str, original_name, _) in enumerate(self.file_data):
                     if path_str == dst_str:  # 用重命名后的路径(dst)来查找需要撤销的项目
                         self.file_data[i] = (src_str, Path(src_str).name, {})
-                        break
+                        updated_indices.add(i)
+                        # 不break，继续查找可能存在的其他匹配项
                         
             # 重建左侧树
             self._rebuild_left_tree()
@@ -3393,34 +3545,34 @@ class BatchRenameWidget(QWidget):
             QMessageBox.warning(self, "错误", "无效的项目索引")
             return
             
-        # 获取路径数据 - 优先从第3列（路径列）获取
+        # 获取路径数据 - 优先从UserRole获取完整路径
         path_data = None
         model = index.model()
         
-        # 尝试从第3列获取路径（路径列）
+        # 尝试从UserRole获取完整路径数据（最可靠的方式）
         try:
-            path_index = model.index(index.row(), 3)
-            if path_index.isValid():
-                path_data = path_index.data()
+            if model == self.left_model:
+                item = self.left_model.itemFromIndex(index)
+            else:
+                item = self.right_model.itemFromIndex(index)
+            if item:
+                path_data = item.data(Qt.UserRole)
         except Exception as e:
             pass
         
-        # 如果第3列没有数据，尝试从当前列获取
+        # 如果UserRole没有数据，尝试从第3列获取路径
+        if not path_data:
+            try:
+                path_index = model.index(index.row(), 3)
+                if path_index.isValid():
+                    path_data = path_index.data()
+            except Exception as e:
+                pass
+        
+        # 如果还是没有，尝试从当前列获取
         if not path_data:
             try:
                 path_data = index.data()
-            except Exception as e:
-                pass
-            
-        # 如果还是没有，尝试从UserRole获取
-        if not path_data:
-            try:
-                if model == self.left_model:
-                    item = self.left_model.itemFromIndex(index)
-                else:
-                    item = self.right_model.itemFromIndex(index)
-                if item:
-                    path_data = item.data(Qt.UserRole)
             except Exception as e:
                 pass
         
@@ -3596,17 +3748,20 @@ class BatchRenameWidget(QWidget):
         # 获取左右树视图中剩余的项目
         remaining_paths = set()
         
-        # 从左树获取 - 第3列是路径列，使用完整绝对路径作为唯一键
+        # 从左树获取 - 使用Qt.UserRole中的路径数据
         for row in range(self.left_model.rowCount()):
-            path_item = self.left_model.item(row, 3)
-            if path_item and path_item.text():
-                # 使用完整绝对路径避免同名文件误删
-                try:
-                    abs_path = str(Path(path_item.text()).resolve())
-                    remaining_paths.add(abs_path)
-                except Exception:
-                    # 如果路径解析失败，使用原始路径
-                    remaining_paths.add(path_item.text())
+            # 从任意一列获取UserRole数据，因为所有列都存储了相同的路径
+            item = self.left_model.item(row, 0)  # 使用第0列
+            if item:
+                path_data = item.data(Qt.UserRole)
+                if path_data:
+                    # 使用完整绝对路径避免同名文件误删
+                    try:
+                        abs_path = str(Path(path_data).resolve())
+                        remaining_paths.add(abs_path)
+                    except Exception:
+                        # 如果路径解析失败，使用原始路径
+                        remaining_paths.add(path_data)
         
         # 更新file_data，只保留仍在树视图中的项目
         new_file_data = []

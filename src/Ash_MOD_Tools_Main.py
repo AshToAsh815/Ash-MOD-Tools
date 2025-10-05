@@ -14,7 +14,6 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import sys
-import os
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel
@@ -24,13 +23,16 @@ from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer
 from BatchReplaceFiles import FileReplacerApp
 from BatchRenameFiles import MainWindow as BatchRenameApp
 
+import resources  # 内嵌资源
+
 class SplashScreen(QLabel):
     """启动动画：淡入显示 LogoBig.png，1 秒后淡出"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        pixmap = QPixmap(os.path.join(os.path.dirname(__file__), "LogoBig.png"))
+        # 使用内嵌资源加载图片
+        pixmap = QPixmap(":/LogoBig.png")
         self.setPixmap(pixmap)
         self.setAlignment(Qt.AlignCenter)
         self.setScaledContents(True)
@@ -61,7 +63,7 @@ class MainApplication(QMainWindow):
     def __init__(self):
         super().__init__()
         # ----------------- 窗口属性 -----------------
-        self.setWindowTitle("Ash-MOD-Tools-v1.2")
+        self.setWindowTitle("Ash-MOD-Tools-v1.3")
         self.setGeometry(100, 100, 1000, 800)
         self.center_window()
 
@@ -131,7 +133,7 @@ class MainApplication(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    import resources
+    # 设置窗口图标，使用内嵌资源
     app.setWindowIcon(QIcon(":/icon.ico"))
 
     # ----------------- 启动动画 -----------------
@@ -142,8 +144,10 @@ if __name__ == "__main__":
     )
     splash.show()
 
+    main_app = MainApplication()
+
     # 先淡入 splash
-    splash.fade_in(duration=500, finished_callback=lambda: 
+    splash.fade_in(duration=500, finished_callback=lambda:
         # 1 秒后淡出 splash，同时主窗口淡入显示
         QTimer.singleShot(500, lambda: splash.fade_out(
             finished_callback=lambda: (
@@ -154,5 +158,4 @@ if __name__ == "__main__":
         ))
     )
 
-    main_app = MainApplication()
     sys.exit(app.exec_())
