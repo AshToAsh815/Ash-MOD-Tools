@@ -1,4 +1,5 @@
 # Ash-MOD-Tools
+<img width="314" height="316" alt="logo" src="https://github.com/user-attachments/assets/640a3317-5c45-4608-9e7f-f37e8a77ed5b" />
 
 批量文件处理工具集 - 基于PyQt5的图形界面应用程序
 
